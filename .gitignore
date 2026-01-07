@@ -1,0 +1,17 @@
+# Ignore large data files
+*.pt
+*.pth
+*.npy
+
+# Ignore dataset folders
+train_data/
+processed_landmarks/
+
+# Ignore Python cache
+__pycache__/
+*.pyc
+.DS_Store
+.vscode/
+
+# Ignore documentation files
+docs/
