@@ -103,12 +103,18 @@ class Grapher(nn.Module):
         x = self.fc2(x)
         x = x+tmp_x
         x = self.act(x)
+        # --- ADD DROPOUT HERE ---
+        x = self.dropout(x) 
+        # -----------------------------
         x = self.fc3(x)
         x = self.IntraPartMR(x)
 
         x = self.fc4(x)
         x = x + tmp_x
         x = self.act(x)
+        # --- ADD DROPOUT HERE ---
+        x = self.dropout(x) 
+        # -----------------------------
         return x.view(B,T,C,P,1)
 
 class Part_3DCNN(nn.Module):
@@ -236,6 +242,7 @@ class STViG_Landmark(nn.Module):
         # Final Classifier
         self.fc = nn.Sequential(
             nn.Linear(output_channels[-1] * expansion, 256),
+            nn.BatchNorm1d(256),
             nn.ReLU(),
             nn.Dropout(0.5), # Added dropout
             nn.Linear(256, 1) # Binary classification

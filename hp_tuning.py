@@ -22,7 +22,7 @@ PATIENCE = 8 # Early stopping patience
 
 # Hyperparameter Grid
 GRID = {
-    'lr': [1e-3, 1e-4],
+    'lr': [1e-4, 1e-5],
     'dropout': [0.3, 0.5],
     'batch_size': [16, 32]
 }
@@ -64,7 +64,7 @@ def train_config(config, train_loader, val_loader, device):
     
     early_stopper = EarlyStopping(patience=PATIENCE)
     history = {'train_loss': [], 'val_loss': []}
-    
+    best_loss_in_run = np.inf
     for epoch in range(MAX_EPOCHS):
         # TRAIN
         model.train()
@@ -112,6 +112,15 @@ def train_config(config, train_loader, val_loader, device):
         
         avg_val_loss = val_loss / len(val_loader)
         
+        # CHANGE 2: SAVE CHECKPOINT
+        if avg_val_loss < best_loss_in_run:
+            best_loss_in_run = avg_val_loss
+            # Create a unique name for this config
+            save_name = f"model_lr{config['lr']}_bs{config['batch_size']}_drop{config['dropout']}.pth"
+            save_path = os.path.join(CHECKPOINT_DIR, save_name)
+            torch.save(model.state_dict(), save_path)
+            # print(f"        💾 Saved best model to {save_name}")
+
         history['train_loss'].append(avg_train_loss)
         history['val_loss'].append(avg_val_loss)
         

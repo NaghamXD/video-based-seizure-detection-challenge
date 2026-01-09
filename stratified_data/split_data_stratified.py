@@ -2,11 +2,15 @@ import pandas as pd
 import numpy as np
 import os
 from tqdm import tqdm
+from pathlib import Path
 
+# Base directory = project root
+BASE_DIR = Path(__file__).resolve().parent
+# ↑ adjust number of `.parent` depending on depth
 # --- CONFIGURATION ---
-DATA_ROOT = 'train_data'
-CSV_PATH = 'train_data/train_data.csv'   # Path to your existing labels
-OUTPUT_DIR = 'processed_landmarks'    # Output folder
+DATA_ROOT =  BASE_DIR /'train_data'
+CSV_PATH =  BASE_DIR /'train_data/train_data.csv'   # Path to your existing labels
+OUTPUT_DIR =  BASE_DIR /'processed_landmarks'    # Output folder
 SEED = 42                                # Random seed for reproducibility
 
 def is_file_valid(file_path):
