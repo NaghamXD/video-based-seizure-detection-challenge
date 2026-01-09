@@ -2,10 +2,12 @@ import json
 import os
 import pandas as pd
 import numpy as np
+import torch
 
 # --- CONFIGURATION ---
 OUTPUT_FOLDER = 'processed_landmarks'
-LABEL_CSV = 'train_data.csv' # The original CSV used for ordering
+LABEL_CSV = 'train_data/train_data.csv' # The original CSV used for ordering
+MASK_FILE = os.path.join(OUTPUT_FOLDER, 'all_masks.pt') # Path to masks tensor
 
 def parse_child_id(filename):
     # Filename format: child_{id}_{segment}.npy
@@ -21,16 +23,41 @@ def main():
     if not os.path.exists(LABEL_CSV):
         print(f"❌ Error: {LABEL_CSV} not found.")
         return
-
+    
+    if not os.path.exists(MASK_FILE):
+        print(f"❌ Error: {MASK_FILE} not found. Run preprocessing first.")
+        return
+    
     print(f"📂 Loading file list from {LABEL_CSV}...")
     df = pd.read_csv(LABEL_CSV)
+    
+    print(f"📂 Loading masks from {MASK_FILE}...")
+    # Load masks to check for valid frames
+    # Shape: (N_samples, 150 frames) boolean or int
+    all_masks = torch.load(MASK_FILE)
+
+    if len(df) != len(all_masks):
+        print(f"⚠️ Warning: CSV has {len(df)} rows but masks tensor has {len(all_masks)} rows!")
+        # We proceed cautiously, assuming index alignment is still intended for the valid range
     
     # We need to map the dataframe index (which corresponds to the .pt index) to child_id
     # Create a dictionary: child_id -> list of indices
     child_indices = {}
+    skipped_count = 0
     
     print("🔍 Grouping data by Child ID...")
     for idx, row in df.iterrows():
+        # Safety check for index bound
+        if idx >= len(all_masks):
+            break
+            
+        # --- FILTERING STEP ---
+        # Check if this sample has any valid frames
+        if all_masks[idx].sum() == 0:
+            skipped_count += 1
+            # print(f"   Skipping index {idx} (0 valid frames)")
+            continue
+
         filename = row['segment_name']
         label = row['label'] # We keep the label for reference in the json
         
@@ -45,6 +72,8 @@ def main():
             
         # Store [index, label] pair compatible with your dataset class
         child_indices[child_id].append([idx, int(label)])
+
+    print(f"ℹ️  Skipped {skipped_count} empty samples.")
 
     unique_children = sorted(child_indices.keys())
     print(f"Found {len(unique_children)} children: {unique_children}")
