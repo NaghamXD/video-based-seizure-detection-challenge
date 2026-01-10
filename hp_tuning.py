@@ -7,7 +7,7 @@ import itertools
 import numpy as np
 import matplotlib.pyplot as plt
 from VSViG_Landmark import VSViG_Landmark_Base
-from t_lm import LandmarkDataset, CHECKPOINT_DIR # Re-use dataset class
+from hp_t_lm import LandmarkDataset, CHECKPOINT_DIR # Re-use dataset class
 
 # --- CONFIGURATION ---
 DATA_FOLDER = 'processed_landmarks'

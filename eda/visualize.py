@@ -130,7 +130,7 @@ import pandas as pd
 import os
 
 # --- CONFIGURATION ---
-npy_file_name = 'child_100_1.npy'       # Name of the file you want to see
+npy_file_name = 'child_204_42.npy'       # Name of the file you want to see
 csv_file_path = 'train_data/train_data.csv'      # Path to your labels CSV
 npy_folder_path = 'train_data'                  # e.g., 'data/train/'
 

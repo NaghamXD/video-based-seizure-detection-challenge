@@ -320,7 +320,7 @@ def VSViG_Landmark_Base(pretrained=False, **kwargs):
             self.dynamic = True
             self.num_layer = [2,2,6,2]
             self.output_channels = [24,48,96,192]
-            self.dynamic_point_order = torch.load(PATH_TO_DYNAMIC_PARTITIONS)
+            self.dynamic_point_order = torch.load(PATH_TO_DYNAMIC_PARTITIONS, weights_only=False)
             self.expansion = 2
     opt = OptInit(**kwargs)
     model = STViG_Landmark(opt)

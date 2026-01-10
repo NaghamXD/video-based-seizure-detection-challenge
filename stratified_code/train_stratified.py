@@ -5,10 +5,14 @@ import pandas as pd
 import numpy as np
 import os
 import json
-from VSViG_Landmark import VSViG_Landmark_Base
 from pathlib import Path
+import sys
+
+sys.path.append(str(Path(__file__).resolve().parent.parent))
+from VSViG_Landmark import VSViG_Landmark_Base
+
 # Base directory = project root
-BASE_DIR = Path(__file__).resolve().parent
+BASE_DIR = Path(__file__).resolve().parent.parent
 
 # --- CONFIGURATION ---
 DATA_ROOT =  BASE_DIR /'train_data'            
@@ -17,23 +21,11 @@ MAX_FRAMES = 150
 BATCH_SIZE = 32
 CHECKPOINT_DIR = BASE_DIR / "checkpoints_stratified"
 
-# Mapping 33 MediaPipe Landmarks to 15 VSViG Joints (Must match Preprocessing logic)
+# Mapping 33 MediaPipe Landmarks to 15 VSViG Joints
 MP_MAP = {
-    0: [0],       # Nose
-    1: [2],       # Left Eye
-    2: [5],       # Right Eye
-    3: [12],      # Right Shoulder
-    4: [14],      # Right Elbow
-    5: [16],      # Right Wrist
-    6: [24],      # Right Hip
-    7: [26],      # Right Knee
-    8: [28],      # Right Ankle
-    9: [11],      # Left Shoulder
-    10: [13],     # Left Elbow
-    11: [15],     # Left Wrist
-    12: [23],     # Left Hip
-    13: [25],     # Left Knee
-    14: [27],     # Left Ankle
+    0: [0], 1: [2], 2: [5], 3: [12], 4: [14], 5: [16], 
+    6: [24], 7: [26], 8: [28], 9: [11], 10: [13], 11: [15], 
+    12: [23], 13: [25], 14: [27]
 }
 
 if not os.path.exists(CHECKPOINT_DIR): os.makedirs(CHECKPOINT_DIR)
@@ -67,19 +59,35 @@ class SeizureDataset(Dataset):
         except Exception:
             raw_lmks = np.zeros((1, 33, 5), dtype=np.float32)
 
-        # 3. Data Processing & Mapping (33 -> 15)
-        # Create containers
+        # 3. Data Processing & Mapping
         mapped_data = np.zeros((self.max_frames, 15, 5), dtype=np.float32)
-        mask = np.zeros((self.max_frames), dtype=np.float32) # Float for interpolation
+        mask = np.zeros((self.max_frames), dtype=np.float32) 
 
-        num_frames = min(self.max_frames, raw_lmks.shape[0])
+        # --- TRIM LEADING NANS ---
+        # Find where the data actually starts
+        if raw_lmks.shape[0] > 0:
+            # Flatten to check frame validity
+            flat_frames = raw_lmks.reshape(raw_lmks.shape[0], -1)
+            valid_mask = ~np.isnan(flat_frames).all(axis=1) # Boolean array
+            
+            if valid_mask.any():
+                # Find index of first True
+                first_valid_idx = np.argmax(valid_mask)
+                # Slice the array to start from valid data
+                current_raw = raw_lmks[first_valid_idx:]
+            else:
+                # File is all NaNs
+                current_raw = np.zeros((0, 33, 5))
+        else:
+            current_raw = raw_lmks
+
+        # Take up to MAX_FRAMES of the *trimmed* data
+        num_frames = min(self.max_frames, current_raw.shape[0])
         
         if num_frames > 0:
-            # Slice valid frames
-            current_raw = raw_lmks[:num_frames].copy()
+            current_raw = current_raw[:num_frames].copy()
 
-            # --- NORMALIZATION (Matches preprocessing_landmarks.py) ---
-            # Center X and Y (-0.5) and Scale (/6.0)
+            # --- NORMALIZATION ---
             current_raw[:, :, 0] = current_raw[:, :, 0] - 0.5
             current_raw[:, :, 1] = current_raw[:, :, 1] - 0.5
             current_raw[:, :, 0:3] = current_raw[:, :, 0:3] / 6.0
@@ -89,70 +97,72 @@ class SeizureDataset(Dataset):
                 source_idx = mp_indices[0]
                 mapped_data[:num_frames, target_idx, :] = current_raw[:, source_idx, :]
 
-            # --- MASK CREATION ---
-            # 1 = Valid Frame, 0 = Padding
-            mask[:num_frames] = 1.0 
+            # --- SMART MASKING ---
+            # Mask is 1 ONLY if the frame has data (after trimming).
+            # If there are internal NaNs in the trimmed sequence, we want mask=0 for those specific frames.
+            # We re-check validity on the *mapped* or *trimmed* raw data.
             
-            # Handle NaNs (Replace with 0.0)
+            # Re-calculate valid mask for the slice we actually kept
+            flat_slice = current_raw.reshape(num_frames, -1)
+            slice_validity = ~np.isnan(flat_slice).all(axis=1)
+            
+            # Fill mask
+            mask[:num_frames] = slice_validity.astype(np.float32)
+            
+            # Handle remaining NaNs in data (turn to 0.0)
             mapped_data = np.nan_to_num(mapped_data, nan=0.0)
 
         # 4. Convert to Tensor
-        tensor_data = torch.from_numpy(mapped_data) # (150, 15, 5)
-        tensor_label = torch.tensor(label, dtype=torch.float32) # Float for BCE
-        tensor_mask = torch.from_numpy(mask) # (150)
+        tensor_data = torch.from_numpy(mapped_data)
+        tensor_label = torch.tensor(label, dtype=torch.float32)
+        tensor_mask = torch.from_numpy(mask) 
 
         return tensor_data, tensor_label, tensor_mask
 
 def get_dataloaders(split_dir, data_root, batch_size=32):
     train_csv = os.path.join(split_dir, 'train_split.csv')
     val_csv   = os.path.join(split_dir, 'val_split.csv')
-    #test_csv  = os.path.join(split_dir, 'test_split.csv') # Load Test CSV
     
     train_dataset = SeizureDataset(train_csv, data_root, MAX_FRAMES)
     val_dataset   = SeizureDataset(val_csv, data_root, MAX_FRAMES)
-    #test_dataset  = SeizureDataset(test_csv, data_root, MAX_FRAMES) # Create Test Dataset
     
     train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True, num_workers=0)
     val_loader   = DataLoader(val_dataset,   batch_size=batch_size, shuffle=False, num_workers=0)
-    #test_loader  = DataLoader(test_dataset,  batch_size=batch_size, shuffle=False, num_workers=0) # Create Test Loader
     
-    return train_loader, val_loader # Return all 3
+    return train_loader, val_loader
 
 def train():
-    # 1. Setup Device
-    if torch.backends.mps.is_available():
-        device = torch.device("mps")
-    elif torch.cuda.is_available():
-        device = torch.device("cuda")
-    else:
-        device = torch.device("cpu")
+    if torch.backends.mps.is_available(): device = torch.device("mps")
+    elif torch.cuda.is_available(): device = torch.device("cuda")
+    else: device = torch.device("cpu")
     print(f"🚀 Device: {device}")
 
-    # 2. Data Loaders
     train_loader, val_loader = get_dataloaders(SPLIT_FOLDER, DATA_ROOT, BATCH_SIZE)
     print(f"✅ Data Ready: Train ({len(train_loader)} batches), Val ({len(val_loader)} batches)")
 
-    # 3. Initialize Model
-    # Note: VSViG_Landmark_Base likely ignores args and uses internal OptInit defaults
     model = VSViG_Landmark_Base() 
     model.to(device)
+    
+    # Inject Dropout
+    for m in model.modules():
+        if isinstance(m, nn.Dropout):
+            m.p = 0.3
 
-    # 4. Loss & Optimizer
     criterion = nn.BCEWithLogitsLoss()
-    # 1. Lower LR slightly and increase Weight Decay (L2 Regularization)
-    optimizer = torch.optim.Adam(model.parameters(), lr=5e-5, weight_decay=1e-3)
-
-    # 2. Smarter Scheduler: Reduce LR if Val Loss stops improving for 3 epochs
+    optimizer = torch.optim.Adam(model.parameters(), lr=1e-4, weight_decay=1e-4)
+    
     scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
-        optimizer, mode='min', factor=0.5, patience=3, verbose=True
+        optimizer, mode='min', factor=0.5, patience=3
     )
 
-    epochs = 20
+    epochs = 200
     start_epoch = 0
     min_valid_loss = np.inf
     history = {'train_loss': [], 'val_loss': []}
 
-    # 5. Resume Logic
+    early_stopping_patience = 50 
+    early_stopping_counter = 0
+
     if os.path.exists(PATH_TO_LAST_CKPT):
         print(f"🔄 Resuming from checkpoint: {PATH_TO_LAST_CKPT}")
         checkpoint = torch.load(PATH_TO_LAST_CKPT, map_location=device)
@@ -163,28 +173,19 @@ def train():
         min_valid_loss = checkpoint.get('min_valid_loss', np.inf)
         history = checkpoint.get('history', history)
 
-    # --- TRAINING LOOP ---
     for e in range(start_epoch, epochs):
         print(f'\n=== Epoch {e+1}/{epochs} ===')
         
         # Train
         model.train()
         train_loss = 0.0
-        
         for batch in train_loader:
-            # Unpack: Data, Labels, Mask
             data, labels, mask = batch 
             data, labels, mask = data.to(device), labels.to(device), mask.to(device)
             
             optimizer.zero_grad()
-            
-            # Forward Pass
-            outputs = model(data, mask=mask) # Output shape (B, 1)
-            
-            # Loss Calculation (Ensure shapes match)
-            # labels needs to be (B, 1) to match outputs
+            outputs = model(data, mask=mask) 
             loss = criterion(outputs, labels.unsqueeze(1))
-            
             loss.backward()
             optimizer.step()
             train_loss += loss.item()
@@ -193,34 +194,36 @@ def train():
         history['train_loss'].append(avg_train_loss)
         print(f'   Train Loss: {avg_train_loss:.4f}')
 
-        # Validation (Every epoch is usually better for small datasets)
-        if (e+1) % 1 == 0: 
-            model.eval()
-            valid_loss = 0.0
-            
-            with torch.no_grad():
-                for batch in val_loader:
-                    data, labels, mask = batch
-                    data, labels, mask = data.to(device), labels.to(device), mask.to(device)
-                    
-                    outputs = model(data, mask=mask)
-                    loss = criterion(outputs, labels.unsqueeze(1))
-                    valid_loss += loss.item()
-            
-            avg_val_loss = valid_loss / len(val_loader)
-            history['val_loss'].append(avg_val_loss)
-            print(f'   Val Loss:   {avg_val_loss:.4f}')
-
-            # Save Best Model
-            if avg_val_loss < min_valid_loss:
-                print(f'   🌟 New Best Model! (Loss: {avg_val_loss:.4f})')
-                min_valid_loss = avg_val_loss
-                torch.save(model.state_dict(), PATH_TO_BEST_MODEL)
+        # Validation
+        model.eval()
+        valid_loss = 0.0
+        with torch.no_grad():
+            for batch in val_loader:
+                data, labels, mask = batch
+                data, labels, mask = data.to(device), labels.to(device), mask.to(device)
+                outputs = model(data, mask=mask)
+                loss = criterion(outputs, labels.unsqueeze(1))
+                valid_loss += loss.item()
         
-        # 3. Update Scheduler using VAL LOSS (not step size)
+        avg_val_loss = valid_loss / len(val_loader)
+        history['val_loss'].append(avg_val_loss)
+        print(f'   Val Loss:   {avg_val_loss:.4f}')
+        
+        if avg_val_loss < min_valid_loss:
+            print(f'   🌟 New Best Model! (Loss: {avg_val_loss:.4f})')
+            min_valid_loss = avg_val_loss
+            torch.save(model.state_dict(), PATH_TO_BEST_MODEL)
+            early_stopping_counter = 0 
+        else:
+            early_stopping_counter += 1
+            print(f'   ⚠️ No improvement for {early_stopping_counter}/{early_stopping_patience} epochs.')
+            
+        if early_stopping_counter >= early_stopping_patience:
+            print(f'\n🛑 Early Stopping Triggered! Val loss has not improved for {early_stopping_patience} epochs.')
+            break
+
         scheduler.step(avg_val_loss)
 
-        # Save Regular Checkpoint
         torch.save({
             'epoch': e,
             'model_state_dict': model.state_dict(),
@@ -230,10 +233,8 @@ def train():
             'history': history
         }, PATH_TO_LAST_CKPT)
 
-        # Save Logs
         with open(PATH_TO_LOG_FILE, 'w') as f:
             json.dump(history, f, indent=4)      
-
 
 if __name__ == '__main__':
     train()

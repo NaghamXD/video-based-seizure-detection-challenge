@@ -1,0 +1,58 @@
+[
+    {
+        "learning_rate": 0.0001,
+        "dropout": 0.3,
+        "batch_size": 32,
+        "weight_decay": 0.0001,
+        "best_val_loss": 0.5104101955890655
+    },
+    {
+        "learning_rate": 0.0001,
+        "dropout": 0.5,
+        "batch_size": 32,
+        "weight_decay": 0.0001,
+        "best_val_loss": 0.5128803133964539
+    },
+    {
+        "learning_rate": 5e-05,
+        "dropout": 0.3,
+        "batch_size": 32,
+        "weight_decay": 0.0001,
+        "best_val_loss": 0.51764777302742
+    },
+    {
+        "learning_rate": 5e-05,
+        "dropout": 0.3,
+        "batch_size": 32,
+        "weight_decay": 0.001,
+        "best_val_loss": 0.5222716093063354
+    },
+    {
+        "learning_rate": 5e-05,
+        "dropout": 0.5,
+        "batch_size": 32,
+        "weight_decay": 0.0001,
+        "best_val_loss": 0.557245796918869
+    },
+    {
+        "learning_rate": 0.0001,
+        "dropout": 0.5,
+        "batch_size": 32,
+        "weight_decay": 0.001,
+        "best_val_loss": 0.5597324788570404
+    },
+    {
+        "learning_rate": 0.0001,
+        "dropout": 0.3,
+        "batch_size": 32,
+        "weight_decay": 0.001,
+        "best_val_loss": 0.6376328110694885
+    },
+    {
+        "learning_rate": 5e-05,
+        "dropout": 0.5,
+        "batch_size": 32,
+        "weight_decay": 0.001,
+        "best_val_loss": 0.6434203863143921
+    }
+]
